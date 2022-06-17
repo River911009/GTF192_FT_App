@@ -1,4 +1,4 @@
-# GoalTop_GTF192_FT_App
+# GTF192_FT_App
 
 This Application is designed to demonstrate or to calibrate GoalTop GTM016A for factory test.
 
