@@ -107,6 +107,7 @@ param={
   'HK_ARROW_DOWN':('Down:40',),
   'HK_DATALIST_CLICK':('__DATA__',),
   'HK_GO':('__GO__',"F9:120"),
+  'MSG_CONFIGFILE':"config file content error!",
   'MSG_HELP':"GTM016A Test Kit\n\nBy Riviere @GoalTop",
   'MSG_DISCONNECT':"Fail to connect GTM016A Test Kit hardware.\nPlease reconnect device, then hit START again.",
   'MSG_CREATE_DB':"New database created!\nAll previous result are saved in old database.",
@@ -488,13 +489,16 @@ def setPASSFAIL():
     threshold=json.load(f)
     f.close()
 
-  for key in threshold:
-    if threshold[key]['min']!=-1 and data_buffer[key]<threshold[key]['min']:
-      # print(key,'too small.')
-      bin_flag.append(key)
-    if threshold[key]['max']!=-1 and data_buffer[key]>threshold[key]['max']:
-      # print(key,'too large.')
-      bin_flag.append(key)
+  try:
+    for key in threshold:
+      if threshold[key]['min']!=-1 and data_buffer[key]<threshold[key]['min']:
+        # print(key,'too small.')
+        bin_flag.append(key)
+      if threshold[key]['max']!=-1 and data_buffer[key]>threshold[key]['max']:
+        # print(key,'too large.')
+        bin_flag.append(key)
+  except:
+    sg.popup(param['MSG_CONFIGFILE'],title='Error message',icon=param['ICON_WARNING'])
 
   if data_buffer['cpbin']==-1:
     window['__BIN__'].update('READY')
