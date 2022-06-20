@@ -23,6 +23,7 @@
 """
 import os.path
 import struct
+import json
 import PySimpleGUI as sg
 from serialPort import *
 from dbms import *
@@ -141,6 +142,7 @@ param={
   # Api connection
   'serial_selected':None,
   'SERIAL_REFRESH_TIME':50, # times APP_SPEED
+  'config_file':"config.json",
   'database_file':".log.db",
   'DB_KEY_LIST':'cpbin,opcu,freq,freqduty,aps,dps,apa,dpa,opc,spc,avr,dvr,cpa,cda,apnu,dpnu',
   'CMD_OPEN_CSV':'cmd /c "start excel testlog.csv"',
@@ -479,16 +481,42 @@ def refreshPathList(path):
 
 # ---------- running only events --------------
 
-def setPASSFAIL(result):
-  if result==-1:
+def setPASSFAIL():
+  bin_flag=[]
+
+  with open(param['config_file']) as f:
+    threshold=json.load(f)
+    f.close()
+
+  for key in threshold:
+    if threshold[key]['min']!=-1 and data_buffer[key]<threshold[key]['min']:
+      # print(key,'too small.')
+      bin_flag.append(key)
+    if threshold[key]['max']!=-1 and data_buffer[key]>threshold[key]['max']:
+      # print(key,'too large.')
+      bin_flag.append(key)
+
+  if data_buffer['cpbin']==-1:
     window['__BIN__'].update('READY')
-    window['__BIN__'].update(button_color=('white','#f0f0f0'))#sg.COLOR_SYSTEM_DEFAULT))
-  elif result==0:
-    window['__BIN__'].update('PASS')
-    window['__BIN__'].update(button_color=('black','#00ff00'))
+    window['__BIN__'].update(button_color=('white','#f0f0f0'))
   else:
-    window['__BIN__'].update('FAIL: BIN'+str(result))
-    window['__BIN__'].update(button_color=('black','#ff0000'))
+    if data_buffer['cpbin']==0 and bin_flag==[]:
+      window['__BIN__'].update('PASS')
+      window['__BIN__'].update(button_color=('black','#00ff00'))
+    else:
+      if 'opcu' in bin_flag:
+        data_buffer['cpbin']|=2
+      if 'freq' in bin_flag:
+        data_buffer['cpbin']|=8
+      if 'opc' in bin_flag or 'spc' in bin_flag:
+        data_buffer['cpbin']|=16
+      if 'avr' in bin_flag or 'dvr' in bin_flag:
+        data_buffer['cpbin']|=32
+      if 'apnu' in bin_flag or 'dpnu' in bin_flag:
+        data_buffer['cpbin']|=64
+
+      window['__BIN__'].update('FAIL: BIN'+str(data_buffer['cpbin']))
+      window['__BIN__'].update(button_color=('black','#ff0000'))
 
 def getData(cmd,rlength,decodetype):
   data=0
@@ -500,24 +528,46 @@ def getData(cmd,rlength,decodetype):
       data=struct.unpack('f',bytes(received))[0]
   return(data)
 
-def updateResult(data):
-  window['__CPBIN__'].update(data['cpbin'])
-  window['__OPCU__'].update(data['opcu'])
-  window['__FREQ__'].update(data['freq'])
-  window['__FREQ_DUTY__'].update(data['freqduty'])
-  window['__APS__'].update(data['aps'])
-  window['__DPS__'].update(data['dps'])
-  window['__APA__'].update(data['apa'])
-  window['__DPA__'].update(data['dpa'])
-  window['__OPC__'].update(data['opc'])
-  window['__SPC__'].update(data['spc'])
-  window['__AVR__'].update(data['avr'])
-  window['__DVR__'].update(data['dvr'])
-  window['__CPA__'].update(data['cpa'])
-  window['__CDA__'].update(data['cda'])
-  window['__APNU__'].update(data['apnu'])
-  window['__DPNU__'].update(data['dpnu'])
-  setPASSFAIL(data['cpbin'])
+def updateBufferDBMS(condition):
+  r_list=[]
+  for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(condition)):
+    r_list=row
+  if r_list:
+    data_buffer['cpbin']=r_list[0]
+    data_buffer['opcu']=r_list[1]
+    data_buffer['freq']=r_list[2]
+    data_buffer['freqduty']=r_list[3]
+    data_buffer['aps']=r_list[4]
+    data_buffer['dps']=r_list[5]
+    data_buffer['apa']=r_list[6]
+    data_buffer['dpa']=r_list[7]
+    data_buffer['opc']=r_list[8]
+    data_buffer['spc']=r_list[9]
+    data_buffer['avr']=r_list[10]
+    data_buffer['dvr']=r_list[11]
+    data_buffer['cpa']=r_list[12]
+    data_buffer['cda']=r_list[13]
+    data_buffer['apnu']=r_list[14]
+    data_buffer['dpnu']=r_list[15]
+
+def updateResult():
+  window['__CPBIN__'].update(data_buffer['cpbin'])
+  window['__OPCU__'].update(data_buffer['opcu'])
+  window['__FREQ__'].update(data_buffer['freq'])
+  window['__FREQ_DUTY__'].update(data_buffer['freqduty'])
+  window['__APS__'].update(data_buffer['aps'])
+  window['__DPS__'].update(data_buffer['dps'])
+  window['__APA__'].update(data_buffer['apa'])
+  window['__DPA__'].update(data_buffer['dpa'])
+  window['__OPC__'].update(data_buffer['opc'])
+  window['__SPC__'].update(data_buffer['spc'])
+  window['__AVR__'].update(data_buffer['avr'])
+  window['__DVR__'].update(data_buffer['dvr'])
+  window['__CPA__'].update(data_buffer['cpa'])
+  window['__CDA__'].update(data_buffer['cda'])
+  window['__APNU__'].update(data_buffer['apnu'])
+  window['__DPNU__'].update(data_buffer['dpnu'])
+  setPASSFAIL()
 
 def getAllResults():
   # Get datalist
@@ -539,28 +589,11 @@ def getAllResults():
   data_buffer['dpnu']=getData(param['CMD_DPNU'],4,'float')
 
   #  Update UI
-  updateResult(data_buffer)
+  updateResult()
 
   # STORAGE INTO DATABASE
-  createData(connection=con_db,data={
-    'cpid':values['__DATA__'][0],
-    'cpbin':data_buffer['cpbin'],
-    'opcu':data_buffer['opcu'],
-    'freq':data_buffer['freq'],
-    'freqduty':data_buffer['freqduty'],
-    'aps':data_buffer['aps'],
-    'dps':data_buffer['dps'],
-    'apa':data_buffer['apa'],
-    'dpa':data_buffer['dpa'],
-    'opc':data_buffer['opc'],
-    'spc':data_buffer['spc'],
-    'avr':data_buffer['avr'],
-    'dvr':data_buffer['dvr'],
-    'cpa':data_buffer['cpa'],
-    'cda':data_buffer['cda'],
-    'apnu':data_buffer['apnu'],
-    'dpnu':data_buffer['dpnu'],
-  })
+  data_buffer['cpid']=values['__DATA__'][0]
+  createData(connection=con_db,data=data_buffer)
 
   # Auto increment
   if values['__AINC__']:
@@ -571,8 +604,11 @@ def getAllResults():
       window['__AINC__'].update(False)
       sg.popup(param['MSG_EOL'],icon=param['ICON_WARNING'])
 
+  # Preview mode
   if values['__PVMD__']:
     sg.popup_ok(param['MSG_PREVIEW'],icon=param['ICON_WARNING'])
+
+  # Power off
   tmp=serial_read_write(param['serial_selected'],param['CMD_POWEROFF'],1)
 
 
@@ -737,142 +773,54 @@ while True:
   # Update UI from previous result
   if event in param['HK_DATALIST_CLICK'] and param['app_status']=='running':
     if values['__DATA__']!=[]:
-      r_list=[]
-      for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(values['__DATA__'][0])):
-        r_list=row
-      if r_list:
-        data_buffer['cpbin']=r_list[0]
-        data_buffer['opcu']=r_list[1]
-        data_buffer['freq']=r_list[2]
-        data_buffer['freqduty']=r_list[3]
-        data_buffer['aps']=r_list[4]
-        data_buffer['dps']=r_list[5]
-        data_buffer['apa']=r_list[6]
-        data_buffer['dpa']=r_list[7]
-        data_buffer['opc']=r_list[8]
-        data_buffer['spc']=r_list[9]
-        data_buffer['avr']=r_list[10]
-        data_buffer['dvr']=r_list[11]
-        data_buffer['cpa']=r_list[12]
-        data_buffer['cda']=r_list[13]
-        data_buffer['apnu']=r_list[14]
-        data_buffer['dpnu']=r_list[15]
-      else:
-        data_buffer['cpbin']=-1
-        data_buffer['opcu']=0
-        data_buffer['freq']=0
-        data_buffer['freqduty']=0
-        data_buffer['aps']=0
-        data_buffer['dps']=0
-        data_buffer['apa']=0
-        data_buffer['dpa']=0
-        data_buffer['opc']=0
-        data_buffer['spc']=0
-        data_buffer['avr']=0
-        data_buffer['dvr']=0
-        data_buffer['cpa']=0
-        data_buffer['cda']=0
-        data_buffer['apnu']=0
-        data_buffer['dpnu']=0
-      updateResult(data_buffer)
+      for key in data_buffer:
+        if not key in ('cpid','cpbin'):
+          data_buffer[key]=0
+      data_buffer['cpbin']=-1
+      updateBufferDBMS(values['__DATA__'][0])
+      updateResult()
 
-  # Up/Down movement events
+  # Up arrow movement events
   if event in param['HK_ARROW_UP'] and param['app_status']=='running':
     if values['__DATA__']:
       current_index=datalist.index(values['__DATA__'][0])
       if current_index>0:
         window['__DATA__'].update(set_to_index=[current_index-1])
-        r_list=[]
-        for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(datalist[current_index-1])):
-          r_list=row
-        data_buffer['cpbin']=r_list[0]
-        data_buffer['opcu']=r_list[1]
-        data_buffer['freq']=r_list[2]
-        data_buffer['freqduty']=r_list[3]
-        data_buffer['aps']=r_list[4]
-        data_buffer['dps']=r_list[5]
-        data_buffer['apa']=r_list[6]
-        data_buffer['dpa']=r_list[7]
-        data_buffer['opc']=r_list[8]
-        data_buffer['spc']=r_list[9]
-        data_buffer['avr']=r_list[10]
-        data_buffer['dvr']=r_list[11]
-        data_buffer['cpa']=r_list[12]
-        data_buffer['cda']=r_list[13]
-        data_buffer['apnu']=r_list[14]
-        data_buffer['dpnu']=r_list[15]
-        updateResult(data_buffer)
+        for key in data_buffer:
+          if not key in ('cpid','cpbin'):
+            data_buffer[key]=0
+        data_buffer['cpbin']=-1
+        updateBufferDBMS(datalist[current_index-1])
+        updateResult()
     else:
       window['__DATA__'].update(set_to_index=[0])
-      r_list=[]
-      for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(datalist[0])):
-        r_list=row
-      data_buffer['cpbin']=r_list[0]
-      data_buffer['opcu']=r_list[1]
-      data_buffer['freq']=r_list[2]
-      data_buffer['freqduty']=r_list[3]
-      data_buffer['aps']=r_list[4]
-      data_buffer['dps']=r_list[5]
-      data_buffer['apa']=r_list[6]
-      data_buffer['dpa']=r_list[7]
-      data_buffer['opc']=r_list[8]
-      data_buffer['spc']=r_list[9]
-      data_buffer['avr']=r_list[10]
-      data_buffer['dvr']=r_list[11]
-      data_buffer['cpa']=r_list[12]
-      data_buffer['cda']=r_list[13]
-      data_buffer['apnu']=r_list[14]
-      data_buffer['dpnu']=r_list[15]
-      updateResult(data_buffer)
+      for key in data_buffer:
+        if not key in ('cpid','cpbin'):
+          data_buffer[key]=0
+      data_buffer['cpbin']=-1
+      updateBufferDBMS(datalist[0])
+      updateResult()
 
+  # Down arrow movement events
   if event in param['HK_ARROW_DOWN'] and param['app_status']=='running':
     if values['__DATA__']:
       current_index=datalist.index(values['__DATA__'][0])
       if current_index<(len(datalist)-1):
         window['__DATA__'].update(set_to_index=[current_index+1])
-        r_list=[]
-        for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(datalist[current_index+1])):
-          r_list=row
-        data_buffer['cpbin']=r_list[0]
-        data_buffer['opcu']=r_list[1]
-        data_buffer['freq']=r_list[2]
-        data_buffer['freqduty']=r_list[3]
-        data_buffer['aps']=r_list[4]
-        data_buffer['dps']=r_list[5]
-        data_buffer['apa']=r_list[6]
-        data_buffer['dpa']=r_list[7]
-        data_buffer['opc']=r_list[8]
-        data_buffer['spc']=r_list[9]
-        data_buffer['avr']=r_list[10]
-        data_buffer['dvr']=r_list[11]
-        data_buffer['cpa']=r_list[12]
-        data_buffer['cda']=r_list[13]
-        data_buffer['apnu']=r_list[14]
-        data_buffer['dpnu']=r_list[15]
-        updateResult(data_buffer)
+        for key in data_buffer:
+          if not key in ('cpid','cpbin'):
+            data_buffer[key]=0
+        data_buffer['cpbin']=-1
+        updateBufferDBMS(datalist[current_index+1])
+        updateResult()
     else:
-      window['__DATA__'].update(set_to_index=[0])
-      r_list=[]
-      for row in readData(connection=con_db,key=param['DB_KEY_LIST'],condition='cpid="%s"'%(datalist[0])):
-        r_list=row
-      data_buffer['cpbin']=r_list[0]
-      data_buffer['opcu']=r_list[1]
-      data_buffer['freq']=r_list[2]
-      data_buffer['freqduty']=r_list[3]
-      data_buffer['aps']=r_list[4]
-      data_buffer['dps']=r_list[5]
-      data_buffer['apa']=r_list[6]
-      data_buffer['dpa']=r_list[7]
-      data_buffer['opc']=r_list[8]
-      data_buffer['spc']=r_list[9]
-      data_buffer['avr']=r_list[10]
-      data_buffer['dvr']=r_list[11]
-      data_buffer['cpa']=r_list[12]
-      data_buffer['cda']=r_list[13]
-      data_buffer['apnu']=r_list[14]
-      data_buffer['dpnu']=r_list[15]
-      
-      updateResult(data_buffer)
+      window['__DATA__'].update(set_to_index=[-1])
+      for key in data_buffer:
+        if not key in ('cpid','cpbin'):
+          data_buffer[key]=0
+      data_buffer['cpbin']=-1
+      updateBufferDBMS(datalist[-1])
+      updateResult()
 
   # Start a new test
   if event in param['HK_GO']:
@@ -903,6 +851,7 @@ while True:
         tmp=serial_read_write(param['serial_selected'],param['CMD_POWERON'],1)
         param['getAllResults']=True
 
+  # Get datas when ready
   if param['getAllResults']:
     if serial_refresh_timer<=20:
       serial_refresh_timer+=1
