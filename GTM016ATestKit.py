@@ -724,6 +724,13 @@ while True:
     if not values['__CPID__'] in datalist:
       datalist.append(values['__CPID__'])
       window['__DATA__'].update(values=datalist)
+      window['__DATA__'].update(set_to_index=[len(datalist)-1])
+      for key in data_buffer:
+        if not key in ('cpid','cpbin'):
+          data_buffer[key]=0
+      data_buffer['cpbin']=-1
+      updateBufferDBMS(datalist[len(datalist)-1])
+      updateResult()
     else:
       sg.popup(param['MSG_DOUBLE_ID']%values['__CPID__'],title='Error',auto_close=True,icon=param['ICON_WARNING'])
 
@@ -818,12 +825,12 @@ while True:
         updateBufferDBMS(datalist[current_index+1])
         updateResult()
     else:
-      window['__DATA__'].update(set_to_index=[-1])
+      window['__DATA__'].update(set_to_index=[len(datalist)-1])
       for key in data_buffer:
         if not key in ('cpid','cpbin'):
           data_buffer[key]=0
       data_buffer['cpbin']=-1
-      updateBufferDBMS(datalist[-1])
+      updateBufferDBMS(datalist[len(datalist)-1])
       updateResult()
 
   # Start a new test
